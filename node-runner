@@ -4,13 +4,13 @@
 if [ ! -d /logs ]; then
     mkdir /logs
 fi
-touch /logs/node-setup
+touch /logs/node-runner
 
 #On first run, schedule cron to check for refreshes
 touch /var/spool/cron/crontabs/root
 IS_SCHED=$(cat /var/spool/cron/crontabs/root | grep node-runner )
-if [ ! "$IS_SCHED" != '' ]; then
-    echo "* * * * * node-runner" >> /var/spool/cron/crontabs/root
+if [ "$IS_SCHED" == '' ]; then
+    echo "* * * * * /bin/bash -c 'cd / && ./node-runner'" >> /var/spool/cron/crontabs/root
     echo -e "$(date +%F_%T)\tnode-runner scheduled\truns every minute" >> /logs/node-runner
 fi
 
@@ -19,9 +19,14 @@ if [[ -z "$REPO" || ! -d $REPO ]]; then
     echo -e "$(date +%F_%T)\tnode-runner complete\twaiting for \$REPO" >> /logs/node-runner
     exit
 else
-    echo -e $(date +%F_%T)\tnode-runner starting\tChecking status of \$REPO in $REPO/$NODE_DIR >> /logs/node-runner
+    echo -e "$(date +%F_%T)\tnode-runner starting\tChecking status of \$REPO in $REPO$NODE_DIR" >> /logs/node-runner
 
-    cd $REPO/$NODE_DIR
+    cd $REPO$NODE_DIR
+
+    if [ ! -f 'package.json' ]; then
+        echo -e "$(date +%F_%T)\t...failure\tInvalid Node Project - no package.json!" >> /logs/node-runner
+        exit
+    fi
 
     #check if project is running
     if [[ $( pgrep node ) !=  ''  ]]; then

@@ -1,5 +1,12 @@
 FROM alpine:latest
 
+#from repo-refresher
+RUN apk add --update \
+    bash \
+    git \
+    openssh-client \
+    && rm -rf /var/cache/apk/*
+
 #Copies node:alpine  plus npm
 RUN apk add --update \
     bash \
