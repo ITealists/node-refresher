@@ -1,0 +1,90 @@
+#!/bin/bash
+#This clones the repository $REPO, checks out the branch $BRANCH, and checks that it's staged with $STAGE
+#if GIT variables aren't defined during dockerization, it uses credentials mounted from the server in the /git directory
+#GIT_FULL is used to override the default settings which look for a repository from whatever's in git/git_base
+
+echo "Setting up repository link for \$REPO, \$BRANCH, and \$STAGE"
+echo "  - Will use mounted credentials from /git for any of GIT_KEY, GIT_USER, GIT_BASE not set as environment variables."
+echo "  - Will use 'master' if \$BRANCH is not set"
+echo "  - Will use \$BRANCH value if \$STAGE is not set."
+echo "  - Repository: $REPO, Branch $BRANCH, Stage $STAGE"
+
+#Setup /logs directory and setup log file
+if [ ! -d /logs ]; then
+    mkdir /logs
+fi
+touch /logs/git-setup
+
+#If $REPO isn't supplied just exit.
+if [ -z "$REPO" ];
+then
+    touch /var/spool/cron/crontabs/root
+    IS_SCHED=$(cat /var/spool/cron/crontabs/root | grep git-setup )
+    if [ ! "$IS_SCHED" != '' ]; then
+        echo "* * * * * ./git-setup" >> /var/spool/cron/crontabs/root
+    fi
+    echo -e $(date +%F_%T)\tgit-setup postponed\t"NO \$REPO" >> /logs/git-setup
+    exit
+fi
+
+if [ ! -z "$GIT_FULL" ]
+then
+  echo "\$GIT_FULL was set ($GIT_FULL). Expecting fully specified repository for \$REPO, including any necessary credentials."
+  echo -e $(date +%F_%T)\tgit-setup running\tREPO: '$REPO'\tGIT_FULL '$GIT_FULL' >> /logs/git-setup
+  GIT_REPO=$REPO
+else #construct
+  #check for docker ENV presets, or fill from mounted git/ directory
+  for GIT_VAR in 'GIT_KEY' 'GIT_USER' 'GIT_BASE'
+  do
+    GIT_VAL=
+    GIT_VAL=${!GIT_VAR}
+    if [ -z "$GIT_VAL" ]
+    then
+      GIT_FILE="git/"$( echo $GIT_VAR | tr [A-Z] [a-z] )
+      echo -e \t...setup\tUsing $GIT_FILE for $GIT_VAR >> /logs/git-setup
+      export $GIT_VAR=$(<$GIT_FILE)
+    else
+      echo -e \t...setup\t$GIT_VAR was set via environment var >> /logs/git-setup
+    fi
+  done
+  #now create repo string and auths string
+  GIT_REPO=http://
+  if [ ! -z "$GIT_USER" ]; then
+    if [ ! -z "$GIT_KEY" ]; then
+      GIT_REPO=http://$GIT_USER:$GIT_KEY@$GIT_BASE/$REPO.git
+    else
+      GIT_REPO=http://$GIT_USER@$GIT_BASE/$REPO.git
+    fi
+  else
+    GIT_REPO=http://$GIT_BASE/$REPO.git
+  fi
+fi
+
+#now clone the repository
+echo -e "\t...setup\tCloning $GIT_REPO >> /logs/git-setup
+
+git clone $GIT_REPO $REPO
+
+if [ ! -d $REPO ]
+then
+  echo -e \t...failure\tERROR! could not clone repository >> /logs/git-setup
+else
+  #next check out the branch
+  cd $REPO
+  if [ -z "$BRANCH" ]; then export BRANCH=master; fi
+  git checkout $BRANCH
+
+  #next, if $STAGE is not set, set it to $BRANCH
+  if [ -z "$STAGE" ]; then export STAGE=$BRANCH; fi
+
+  #finally, schedule a cronjob to refresh the branch (default every 10m)
+  if [ ! -d /logs ]; then mkdir /logs; fi
+  touch /logs/$REPO-$BRANCH-refresh
+  if [ -z "$REFRESH" ]; then  export REFRESH="*/10 * * * *" ; fi
+  touch /logs/git-refresh
+
+  #replace git-setup with git-refresh
+  sed 's/.*git-setup.*/$REFRESH ./git-refresh >> /logs/git-refresh/' /var/spool/cron/crontabs/root
+
+  echo \t...finished\tRefresh schedule '$REFRESH' >> /logs/git-setup
+fi
