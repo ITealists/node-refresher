@@ -54,7 +54,7 @@ else
     else
         echo -e "$(date +%F_%T)\t...running\tTrying to start with npm" >> /logs/node-runner
         #try to start
-        npm start
+        npm install && npm start
         if [[ $( pgrep node ) == '' ]]; then
             echo -e "$(date +%F_%T)\t...failure\tnode is not running" >> /logs/node-runner
         else
