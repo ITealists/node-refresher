@@ -1,0 +1,66 @@
+#!/bin/bash
+
+#Make sure we can log this
+if [ ! -d /logs ]; then
+    mkdir /logs
+fi
+touch /logs/node-runner
+
+#On first run, schedule cron to check for refreshes
+touch /var/spool/cron/crontabs/root
+IS_SCHED=$(cat /var/spool/cron/crontabs/root | grep node-runner )
+if [ "$IS_SCHED" == '' ]; then
+    echo "* * * * * /bin/bash -c 'cd / && ./node-runner'" >> /var/spool/cron/crontabs/root
+    echo -e "$(date +%F_%T)\tnode-runner scheduled\truns every minute" >> /logs/node-runner
+fi
+
+#Check if we have a project to run
+if [[ -z "$REPO" || ! -d $REPO ]]; then
+    echo -e "$(date +%F_%T)\tnode-runner complete\twaiting for \$REPO" >> /logs/node-runner
+    exit
+else
+    echo -e "$(date +%F_%T)\tnode-runner starting\tChecking status of \$REPO in $REPO$NODE_DIR" >> /logs/node-runner
+
+    cd $REPO$NODE_DIR
+
+    if [ ! -f 'package.json' ]; then
+        echo -e "$(date +%F_%T)\t...failure\tInvalid Node Project - no package.json!" >> /logs/node-runner
+        exit
+    fi
+
+    #check if project is running
+    if [[ $( pgrep node ) !=  ''  ]]; then
+        #check if there's been an update
+        LATEST_COMMIT=$( tail -n 1 /logs/$REPO-$BRANCH-history | awk '{ print $3 }')
+        if [ $RUNNING_COMMIT == $LATEST_COMMIT ]; then
+            echo -e "$(date +%F_%T)\t...complete\tStill on commit $LATEST_COMMIT" >> /logs/node-runner
+        else
+            echo -e "$(date +%F_%T)\t...running\tUpdating to new commit $LATEST_COMMIT, restarting node..." >> /logs/node-runner
+            npm restart
+            if [[ $( pgrep node ) == '' ]]; then
+                echo -e "$(date +%F_%T)\t...failure\trolling back to $RUNNING_NODE" >> /logs/node-runner
+                cd ../ && git checkout $RUNNING_COMMIT
+                npm restart
+                if [[ $( pgrep node ) == '' ]]; then
+                    echo -e "$(date +%F_%T)\t...FAILURE\tROLLBACK to $RUNNING_NODE failed!" >> /logs/node-runner
+                else
+                    echo -e "$(date +%F_%T)\t...complete\tRollback to $RUNNING_NODE successful" >> /logs/node-runner
+                fi
+            else
+                echo -e "$(date +%F_%T)\t...success\t$REPO is up on $LATEST_COMMIT" >> /logs/node-runner
+                export RUNNING_COMMIT=$LATEST_COMMIT
+            fi
+        fi
+    else
+        echo -e "$(date +%F_%T)\t...running\tTrying to start with npm" >> /logs/node-runner
+        #try to start
+        npm install && npm start
+        if [[ $( pgrep node ) == '' ]]; then
+            echo -e "$(date +%F_%T)\t...failure\tnode is not running" >> /logs/node-runner
+        else
+            echo -e "$(date +%F_%T)\t...success\t$REPO is up" >> /logs/node-runner
+        fi
+    fi
+fi
+
+
