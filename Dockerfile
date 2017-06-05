@@ -1,4 +1,4 @@
-FROM repo-refresher:latest
+FROM lindsayryan/repo-refresher:latest
 
 #Copies node:alpine  plus npm
 RUN apk add --update \
