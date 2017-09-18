@@ -36,6 +36,7 @@ else
             echo -e "$(date +%F_%T)\t...complete\tStill on commit $LATEST_COMMIT" >> /logs/node-runner
         else
             echo -e "$(date +%F_%T)\t...running\tUpdating to new commit $LATEST_COMMIT, restarting node..." >> /logs/node-runner
+            npm update --save
             npm restart
             if [[ $( pgrep node ) == '' ]]; then
                 echo -e "$(date +%F_%T)\t...failure\trolling back to $RUNNING_NODE" >> /logs/node-runner
@@ -54,7 +55,7 @@ else
     else
         echo -e "$(date +%F_%T)\t...running\tTrying to start with npm" >> /logs/node-runner
         #try to start
-        npm install && npm start
+        npm install --save && npm start
         if [[ $( pgrep node ) == '' ]]; then
             echo -e "$(date +%F_%T)\t...failure\tnode is not running" >> /logs/node-runner
         else
